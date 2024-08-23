@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +13,7 @@ typedef struct {
     char title[MAX_TITLE_LENGTH];
     float vote_average;
     char release_date[MAX_DATE_LENGTH];
-    float revenue;
+    long long revenue;
 } Movie;
 
 FILE *output_file;
@@ -142,4 +141,3 @@ void searchMovies(const char *filename, const char *search_param, const char *se
     omp_destroy_lock(&writelock);
     fclose(output_file);
 }
-
