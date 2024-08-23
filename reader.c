@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <omp.h>
 #include "reader.h"
 
@@ -50,7 +51,7 @@ int parseCSVLine(char *line, Movie *movie) {
                 movie->release_date[sizeof(movie->release_date) - 1] = '\0';
                 break;
             case 6:  // "revenue"
-                movie->revenue = strtof(start, NULL);
+                movie->revenue = atoll(start);
                 break;
             default:
                 break;
@@ -123,14 +124,15 @@ void searchMovies(const char *filename, const char *search_param, const char *se
                 match = 1;
             } else if (strcmp(search_param, "release_date") == 0 && strcmp(movie.release_date, search_value) == 0) {
                 match = 1;
-            } else if (strcmp(search_param, "revenue") == 0 && movie.revenue == atof(search_value)) {
+            } else if (strcmp(search_param, "revenue") == 0 && movie.revenue == atoll(search_value)) {
                 match = 1;
             }
+
 
             //Si match es igual a 1
             if (match) {
                 omp_set_lock(&writelock);
-                fprintf(output_file, "\"%s\",%.2f,\"%s\",%.0f\n", movie.title, movie.vote_average, movie.release_date, movie.revenue);
+                fprintf(output_file, "\"%s\",%.2f,\"%s\",\"%lld\"\n", movie.title, movie.vote_average, movie.release_date, movie.revenue);
                 omp_unset_lock(&writelock);
             }
         }
