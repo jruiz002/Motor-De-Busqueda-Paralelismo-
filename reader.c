@@ -1,11 +1,15 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <omp.h>
+#include "reader.h"
 
 #define MAX_LINE_LENGTH 2048
 #define MAX_TITLE_LENGTH 500
 #define MAX_DATE_LENGTH 40
 
+//Estructura de cada película
 typedef struct {
     char title[MAX_TITLE_LENGTH];
     float vote_average;
@@ -13,12 +17,13 @@ typedef struct {
     float revenue;
 } Movie;
 
-// Función para analizar una línea del CSV
+FILE *output_file;
+omp_lock_t writelock;
+
 int parseCSVLine(char *line, Movie *movie) {
     char *token;
     int field = 0;
 
-    // Reemplaza las comillas dobles por nada (opcional)
     char temp[MAX_LINE_LENGTH];
     strcpy(temp, line);
     for (char *p = temp; *p; ++p) {
@@ -27,7 +32,6 @@ int parseCSVLine(char *line, Movie *movie) {
 
     token = strtok(temp, ",");
     while (token != NULL) {
-        // Elimina espacios en blanco de los extremos
         char *start = token;
         while (*start == ' ') start++;
         char *end = start + strlen(start) - 1;
@@ -56,76 +60,86 @@ int parseCSVLine(char *line, Movie *movie) {
         field++;
     }
 
-    // Asegurarse de que los campos necesarios se leyeron correctamente
-    if (field < 7) {  
+    if (field < 7) {
         return 0;
     }
 
     return 1;
 }
 
-// Función para leer el archivo CSV y almacenar los datos en un array dinámico
-Movie *readMoviesFromCSV(const char *filename, int *movieCount) {
+void searchMovies(const char *filename, const char *search_param, const char *search_value, int num_threads) {
+   
+    //Leemos el archivo movies.csv
     FILE *file = fopen(filename, "r");
     if (!file) {
         perror("Error al abrir el archivo");
-        return NULL;
+        return;
     }
+
+    //Escribe los datos (movies) de los resultados en busqueda.csv
+    output_file = fopen("busqueda.csv", "w");
+    if (!output_file) {
+        perror("Error al abrir el archivo de salida");
+        fclose(file);
+        return;
+    }
+
+    //Encabezados del archivo
+    fprintf(output_file, "\"title\",\"vote_average\",\"release_date\",\"revenue\"\n");
+
+    omp_init_lock(&writelock);
+    //Editar el número de hilos
+    omp_set_num_threads(num_threads);
 
     char line[MAX_LINE_LENGTH];
-    Movie *movies = NULL;
-    int count = 0;
-    int capacity = 10;
+    int line_count = 0;
 
-    movies = (Movie *)malloc(capacity * sizeof(Movie));
-    if (!movies) {
-        perror("Error al asignar memoria");
-        fclose(file);
-        return NULL;
-    }
-
-    // Leer la primera línea (cabecera) y descartarla
     if (fgets(line, sizeof(line), file) == NULL) {
         perror("Error al leer la cabecera");
-        free(movies);
         fclose(file);
-        return NULL;
+        fclose(output_file);
+        return;
     }
 
-    // Leer el resto del archivo línea por línea
+    // Leer todas las líneas del archivo en memoria
+    char **lines = NULL;
+    size_t lines_size = 0;
     while (fgets(line, sizeof(line), file)) {
-        Movie movie;
-
-        if (parseCSVLine(line, &movie)) {
-            if (count >= capacity) {
-                capacity *= 2;
-                movies = (Movie *)realloc(movies, capacity * sizeof(Movie));
-                if (!movies) {
-                    perror("Error al redimensionar memoria");
-                    fclose(file);
-                    return NULL;
-                }
-            }
-            movies[count++] = movie;
-        } /*else {
-            fprintf(stderr, "Advertencia: Línea ignorada (formato incorrecto): %s", line);
-        }*/
+        lines = realloc(lines, (lines_size + 1) * sizeof(char *));
+        lines[lines_size] = strdup(line);
+        lines_size++;
     }
-
     fclose(file);
 
-    *movieCount = count;
-    return movies;
+    //Paralelizable
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < lines_size; i++) {
+        Movie movie;
+        if (parseCSVLine(lines[i], &movie)) {
+            int match = 0;
+            //Parametros de búsqueda
+            if (strcmp(search_param, "title") == 0 && strstr(movie.title, search_value)) {
+                match = 1;
+            } else if (strcmp(search_param, "vote_average") == 0 && movie.vote_average == atof(search_value)) {
+                match = 1;
+            } else if (strcmp(search_param, "release_date") == 0 && strcmp(movie.release_date, search_value) == 0) {
+                match = 1;
+            } else if (strcmp(search_param, "revenue") == 0 && movie.revenue == atof(search_value)) {
+                match = 1;
+            }
+
+            //Si match es igual a 1
+            if (match) {
+                omp_set_lock(&writelock);
+                fprintf(output_file, "\"%s\",%.2f,\"%s\",%.0f\n", movie.title, movie.vote_average, movie.release_date, movie.revenue);
+                omp_unset_lock(&writelock);
+            }
+        }
+        free(lines[i]);
+    }
+
+    free(lines);
+    omp_destroy_lock(&writelock);
+    fclose(output_file);
 }
 
-// Función para imprimir las primeras 10 películas
-void printMovies(Movie *movies, int count) {
-    for (int i = 0; i < 10; i++) {
-        printf("Película %d:\n", i + 1);
-        printf("Título: %s\n", movies[i].title);
-        printf("Calificación: %.2f\n", movies[i].vote_average);
-        printf("Fecha de lanzamiento: %s\n", movies[i].release_date);
-        printf("Ingresos: %.2f\n", movies[i].revenue);
-        printf("\n");
-    }
-}

@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "search.h": "c"
+        "search.h": "c",
+        "pthread.h": "c"
     }
 }
