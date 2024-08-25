@@ -9,7 +9,6 @@
 #define MAX_TITLE_LENGTH 500
 #define MAX_DATE_LENGTH 40
 
-//Estructura de cada película
 typedef struct {
     char title[MAX_TITLE_LENGTH];
     float vote_average;
@@ -68,15 +67,12 @@ int parseCSVLine(char *line, Movie *movie) {
 }
 
 void searchMovies(const char *filename, const char *search_param, const char *search_value, int num_threads) {
-   
-    //Leemos el archivo movies.csv
     FILE *file = fopen(filename, "r");
     if (!file) {
         perror("Error al abrir el archivo");
         return;
     }
 
-    //Escribe los datos (movies) de los resultados en busqueda.csv
     output_file = fopen("busqueda.csv", "w");
     if (!output_file) {
         perror("Error al abrir el archivo de salida");
@@ -84,11 +80,9 @@ void searchMovies(const char *filename, const char *search_param, const char *se
         return;
     }
 
-    //Encabezados del archivo
     fprintf(output_file, "\"title\",\"vote_average\",\"release_date\",\"revenue\"\n");
 
     omp_init_lock(&writelock);
-    //Editar el número de hilos
     omp_set_num_threads(num_threads);
 
     char line[MAX_LINE_LENGTH];
@@ -101,13 +95,11 @@ void searchMovies(const char *filename, const char *search_param, const char *se
         return;
     }
 
-    // Leer todas las líneas del archivo en memoria
     char **lines = NULL;
     size_t lines_size = 0;
     while (fgets(line, sizeof(line), file)) {
         char **temp = (char **)realloc(lines, (lines_size + 1) * sizeof(char *));
         if (temp == NULL) {
-            // Manejo de error si realloc falla
             fprintf(stderr, "Error al asignar memoria\n");
             free(lines);
             fclose(file);
@@ -120,13 +112,14 @@ void searchMovies(const char *filename, const char *search_param, const char *se
     }
     fclose(file);
 
-    //Paralelizable
+    // Empieza a medir el tiempo
+    double start_time = omp_get_wtime();
+
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < lines_size; i++) {
         Movie movie;
         if (parseCSVLine(lines[i], &movie)) {
             int match = 0;
-            //Parametros de búsqueda
             if (strcmp(search_param, "title") == 0 && strstr(movie.title, search_value)) {
                 match = 1;
             } else if (strcmp(search_param, "vote_average") == 0 && movie.vote_average == atof(search_value)) {
@@ -137,8 +130,6 @@ void searchMovies(const char *filename, const char *search_param, const char *se
                 match = 1;
             }
 
-
-            //Si match es igual a 1
             if (match) {
                 omp_set_lock(&writelock);
                 fprintf(output_file, "\"%s\",%.2f,\"%s\",\"%lld\"\n", movie.title, movie.vote_average, movie.release_date, movie.revenue);
@@ -148,7 +139,15 @@ void searchMovies(const char *filename, const char *search_param, const char *se
         free(lines[i]);
     }
 
+    // Termina de medir el tiempo
+    double end_time = omp_get_wtime();
+
+    double time_taken = end_time - start_time;
+
     free(lines);
     omp_destroy_lock(&writelock);
     fclose(output_file);
+
+    // Imprime el tiempo tomado
+    printf("Tiempo tomado para la búsqueda con %d hilos: %.6f segundos\n", num_threads, time_taken);
 }
