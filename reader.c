@@ -105,7 +105,16 @@ void searchMovies(const char *filename, const char *search_param, const char *se
     char **lines = NULL;
     size_t lines_size = 0;
     while (fgets(line, sizeof(line), file)) {
-        lines = realloc(lines, (lines_size + 1) * sizeof(char *));
+        char **temp = (char **)realloc(lines, (lines_size + 1) * sizeof(char *));
+        if (temp == NULL) {
+            // Manejo de error si realloc falla
+            fprintf(stderr, "Error al asignar memoria\n");
+            free(lines);
+            fclose(file);
+            fclose(output_file);
+            return;
+        }
+        lines = temp;
         lines[lines_size] = strdup(line);
         lines_size++;
     }
